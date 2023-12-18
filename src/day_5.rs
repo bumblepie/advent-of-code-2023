@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use itertools::Itertools;
+use std::collections::{HashMap, HashSet};
+use itertools::{Itertools};
 use lazy_regex::{regex, regex_captures};
 use std::ops::Range;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 struct ValueRange {
     inner: Range<i64>,
 }
@@ -56,6 +56,26 @@ fn parse_input(input: &str) -> (Vec<i64>, HashMap<(&str, &str), Vec<Transformati
     (seed_values, mappings)
 }
 
+fn parse_input_part_two(input: &str) -> (HashSet<ValueRange>, HashMap<(&str, &str), Vec<Transformation>>)
+{
+    let mut sections = input.split("\r\n\r\n");
+    let seed_values = parse_seeds(sections.next().unwrap());
+    let seed_ranges = seed_values.into_iter()
+        .chunks(2)
+        .into_iter()
+        .map(|pair| {
+            let pair = pair.collect_vec();
+            ValueRange {
+                inner: (pair[0]..(pair[0] + pair[1]))
+            }
+        })
+        .collect();
+    let mappings = sections.map(|section| section.lines().collect_vec())
+        .map(parse_map)
+        .collect();
+    (seed_ranges, mappings)
+}
+
 fn map_value(input: i64, mappings: &Vec<Transformation>) -> i64 {
     let mapping = mappings
         .iter()
@@ -69,8 +89,44 @@ fn map_value(input: i64, mappings: &Vec<Transformation>) -> i64 {
     return input;
 }
 
-fn map_values(input: ValueRange, mappings: &Vec<Transformation>) -> Vec<ValueRange> {
-    unimplemented!()
+fn map_values(input: ValueRange, mappings: &Vec<Transformation>) -> HashSet<ValueRange> {
+    let mut min_value_seen = input.inner.end;
+    let mut max_value_seen = input.inner.start;
+    let mut result = HashSet::new();
+
+    for mapping in mappings.iter() {
+        if input.inner.start > mapping.source_range.end {
+            continue;
+        }
+        if input.inner.end < mapping.source_range.start {
+            continue;
+        }
+
+        let start = i64::max(input.inner.start, mapping.source_range.start);
+        let end = i64::min(input.inner.end, mapping.source_range.end);
+
+        min_value_seen = i64::min(min_value_seen, start);
+        max_value_seen = i64::max(max_value_seen, end);
+        result.insert(ValueRange {
+            inner: ((start + mapping.offset)..(end + mapping.offset))
+        });
+    }
+
+    if min_value_seen > input.inner.start {
+        result.insert(ValueRange {
+            inner: (input.inner.start..min_value_seen),
+        });
+    }
+    if max_value_seen < input.inner.end {
+        result.insert(ValueRange {
+            inner: (max_value_seen..input.inner.end),
+        });
+    }
+
+    if result.is_empty() {
+        dbg!(&input, &mappings);
+    }
+    result
 }
 
 fn part_one(file_name: &str) {
@@ -80,12 +136,31 @@ fn part_one(file_name: &str) {
     let lowest_location = seeds
         .into_iter()
         .map(|seed| map_value(seed, &mappings[&("seed", "soil")]))
-        .map(|seed| map_value(seed, &mappings[&("soil", "fertilizer")]))
-        .map(|seed| map_value(seed, &mappings[&("fertilizer", "water")]))
-        .map(|seed| map_value(seed, &mappings[&("water", "light")]))
-        .map(|seed| map_value(seed, &mappings[&("light", "temperature")]))
-        .map(|seed| map_value(seed, &mappings[&("temperature", "humidity")]))
-        .map(|seed| map_value(seed, &mappings[&("humidity", "location")]))
+        .map(|soil| map_value(soil, &mappings[&("soil", "fertilizer")]))
+        .map(|fertilizer| map_value(fertilizer, &mappings[&("fertilizer", "water")]))
+        .map(|water| map_value(water, &mappings[&("water", "light")]))
+        .map(|light| map_value(light, &mappings[&("light", "temperature")]))
+        .map(|temperature| map_value(temperature, &mappings[&("temperature", "humidity")]))
+        .map(|humidity| map_value(humidity, &mappings[&("humidity", "location")]))
+        .min()
+        .unwrap();
+    println!("{}", lowest_location);
+}
+
+fn part_two(file_name: &str) {
+    let file_contents = std::fs::read_to_string(file_name)
+        .expect("Unable to read file");
+    let (seeds, mappings) = parse_input_part_two(file_contents.as_str());
+    let lowest_location = seeds
+        .into_iter()
+        .flat_map(|seed| map_values(seed, &mappings[&("seed", "soil")]))
+        .flat_map(|soil| map_values(soil, &mappings[&("soil", "fertilizer")]))
+        .flat_map(|fertilizer| map_values(fertilizer, &mappings[&("fertilizer", "water")]))
+        .flat_map(|water| map_values(water, &mappings[&("water", "light")]))
+        .flat_map(|light| map_values(light, &mappings[&("light", "temperature")]))
+        .flat_map(|temperature| map_values(temperature, &mappings[&("temperature", "humidity")]))
+        .flat_map(|humidity| map_values(humidity, &mappings[&("humidity", "location")]))
+        .map(|range| range.inner.start)
         .min()
         .unwrap();
     println!("{}", lowest_location);
@@ -105,6 +180,18 @@ mod test {
     fn test_part_one()
     {
         part_one("inputs/day_5/input.txt");
+    }
+
+    #[test]
+    fn test_part_two_example()
+    {
+        part_two("inputs/day_5/example.txt");
+    }
+
+    #[test]
+    fn test_part_two()
+    {
+        part_two("inputs/day_5/input.txt");
     }
 
 
@@ -132,7 +219,72 @@ mod test {
         }];
         assert_eq!(
             map_values(seed_range, &mappings),
-            vec![ValueRange { inner: (62..72) }]
+            HashSet::from([ValueRange { inner: (62..72) }]),
+        );
+    }
+
+    #[test]
+    fn test_no_overlap() {
+        let seed_range = ValueRange { inner: (50..60) };
+        let mappings = vec![Transformation {
+            source_range: (80..100),
+            offset: 12,
+        }];
+        assert_eq!(
+            map_values(seed_range, &mappings),
+            HashSet::from([ValueRange { inner: (50..60) }]),
+        );
+    }
+
+    #[test]
+    fn test_partial_overlap_start() {
+        let seed_range = ValueRange { inner: (50..60) };
+        let mappings = vec![Transformation {
+            source_range: (0..55),
+            offset: 12,
+        }];
+        assert_eq!(
+            map_values(seed_range, &mappings),
+            HashSet::from([
+                ValueRange { inner: (62..67) },
+                ValueRange { inner: (55..60) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_partial_overlap_end() {
+        let seed_range = ValueRange { inner: (50..60) };
+        let mappings = vec![Transformation {
+            source_range: (55..100),
+            offset: 12,
+        }];
+        assert_eq!(
+            map_values(seed_range, &mappings),
+            HashSet::from([
+                ValueRange { inner: (50..55) },
+                ValueRange { inner: (67..72) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_multiple_split() {
+        let seed_range = ValueRange { inner: (50..60) };
+        let mappings = vec![Transformation {
+            source_range: (55..100),
+            offset: 12,
+        }, Transformation {
+            source_range: (53..55),
+            offset: 2,
+        }];
+        assert_eq!(
+            map_values(seed_range, &mappings),
+            HashSet::from([
+                ValueRange { inner: (50..53) },
+                ValueRange { inner: (55..57) },
+                ValueRange { inner: (67..72) },
+            ]),
         );
     }
 }
