@@ -27,7 +27,10 @@ fn find_first_digit(line: &str, allow_text: bool) -> Option<u64> {
 fn find_last_digit(line: &str, allow_text: bool) -> Option<u64> {
     let reversed: String = line.chars().rev().collect();
     let digit = if allow_text {
-        regex_find!(r#"\d|eno|owt|eerht|ruof|evif|xis|neves|thgie|enin"#, &reversed)?
+        regex_find!(
+            r#"\d|eno|owt|eerht|ruof|evif|xis|neves|thgie|enin"#,
+            &reversed
+        )?
     } else {
         regex_find!(r#"\d"#, &reversed)?
     };
