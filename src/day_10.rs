@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufRead;
 use itertools::Itertools;
+use crate::util::Point;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum Pipe {
@@ -43,31 +44,6 @@ impl Pipe {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-struct Point {
-    x: i64,
-    y: i64,
-}
-
-impl Point {
-    fn inverted(&self) -> Self {
-        Self {
-            x: self.x * -1,
-            y: self.y * -1,
-        }
-    }
-}
-
-impl std::ops::Add for Point {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
 #[derive(Debug, Clone)]
 struct Marker {
     current: Point,
