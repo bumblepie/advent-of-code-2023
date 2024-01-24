@@ -23,3 +23,14 @@ impl std::ops::Add for Point {
         }
     }
 }
+
+impl std::ops::Sub for Point {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
